@@ -64,10 +64,21 @@ public class PersonaService extends BaseService<Persona,Integer> {
 
     @Override
     public Persona update(Persona entity) {
-        if (entity.getNombre() == null || entity.getNombre().trim().isEmpty()){
-            throw new IllegalArgumentException("El nombre de la persona no pueda estar vacío.");
+        if (entity == null) {
+            throw new IllegalArgumentException("La persona a actualizar no puede ser nula.");
         }
-        return dao.update(entity);
+        if (entity.getNombre() == null || entity.getNombre().trim().isEmpty()){
+            throw new IllegalArgumentException("El nombre de la persona no puede estar vacío.");
+        }
+        Optional<Persona> existingPersonaOptional = super.read(entity.getId());
+        if (existingPersonaOptional.isEmpty()) {
+            throw new RuntimeException("La persona con ID " + entity.getId() + " no fue encontrada para actualizar.");
+        }
+        
+        Persona personaToUpdate = existingPersonaOptional.get();
+        personaToUpdate.setNombre(entity.getNombre());
+        personaToUpdate.setEdad(entity.getEdad()); 
+        return super.update(personaToUpdate); 
     }
 
     @Override
