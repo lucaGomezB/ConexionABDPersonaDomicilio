@@ -1,6 +1,7 @@
 // PersonaDAO.java (re-visiting for clarity)
 package dao;
 
+import java.sql.ResultSetMetaData;
 import config.DatabaseConnection;
 import model.Persona;
 import model.Domicilio;
@@ -20,54 +21,56 @@ public class PersonaDAO extends BaseDAO<Persona, Integer> {
 
     @Override
     protected Persona mapResultSetToObject(ResultSet rs) throws SQLException {
-        int id = rs.getInt("id");
+        int personaId = rs.getInt("id");
         String nombre = rs.getString("nombre");
         int edad = rs.getInt("edad");
-        int idDomicilio = rs.getInt("id_domicilio");
+        int domicilioId = rs.getInt("domicilio_id");
+        String localidad = rs.getString("localidad");
+        String provincia = rs.getString("provincia");
         Domicilio domicilio = null;
-        
-        try {
-            domicilio = this.domicilioDao.findById(idDomicilio);
-        } catch (SQLException e) {
-            System.err.println("Error retrieving Domicilio for Persona ID " + id + ": " + e.getMessage());
+        if (domicilioId > 0) {
+            domicilio = new Domicilio(domicilioId, localidad, provincia);
+        } else {
+            System.err.println("Advertencia: Domicilio ID = 0 o es inválido para ID: " + personaId + ". Domicilio será null.");
         }
-        return new Persona(id, nombre, edad, domicilio);
+
+        return new Persona(personaId, nombre, edad, domicilio);
     }
 
-    public Persona findById(Integer id) throws SQLException {
+    @Override
+    public Persona findByID(Integer id) throws SQLException {
+        String sql = "SELECT p.id, p.nombre, p.edad, d.id AS domicilio_id, d.localidad, d.provincia " +
+                     "FROM persona p INNER JOIN domicilio d ON p.id_domicilio = d.id " +
+                     "WHERE p.id = ?";
         Connection conn = null;
-        PreparedStatement ps = null;
+        PreparedStatement pstmt = null;
         ResultSet rs = null;
         Persona persona = null;
-
-        // This is the custom SQL query with the JOIN
-        String sql = "SELECT p.id, p.nombre, p.edad, " +
-                     "d.id AS domicilio_id, d.localidad, d.provincia " +
-                     "FROM " + tableName + " p " + 
-                     "JOIN integradorprog2.domicilio d ON p.id_domicilio = d.id " +
-                     "WHERE p." + idColumnName + " = ?"; 
-
         try {
-            conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql);
-            ps.setInt(1, id); 
-            rs = ps.executeQuery();
-
+            conn = DatabaseConnection.getConnection(); 
+            pstmt = conn.prepareStatement(sql);
+            pstmt.setInt(1, id);
+            rs = pstmt.executeQuery();
             if (rs.next()) {
                 persona = mapResultSetToObject(rs);
             }
         } catch (SQLException e) {
-            System.err.println("Error finding Persona by ID: " + e.getMessage());
+            System.err.println("Error al encontrar entidad Persona por ID: " + id + ": " + e.getMessage());
             throw e;
         } finally {
-            closeResources(ps, rs, conn);
+            closeResources(pstmt, rs, conn);
         }
         return persona;
     }
+
     @Override
     protected PreparedStatement prepareStatementForInsert(Connection conn, Persona entity) throws SQLException {
-        int domicilioId = entity.getDomicilio().getId();; 
-
+        if (entity.getDomicilio().getId() == 0) {
+            this.domicilioDao.insert(conn, entity.getDomicilio());
+        } else {
+            this.domicilioDao.updateWithConnection(conn, entity.getDomicilio());
+        }
+        int domicilioId = entity.getDomicilio().getId();
         String sql = "INSERT INTO " + tableName + " (nombre, edad, id_domicilio) VALUES (?, ?, ?)";
         PreparedStatement ps = conn.prepareStatement(sql, PreparedStatement.RETURN_GENERATED_KEYS);
         ps.setString(1, entity.getNombre());
@@ -78,16 +81,14 @@ public class PersonaDAO extends BaseDAO<Persona, Integer> {
 
     @Override
     protected PreparedStatement prepareStatementForUpdate(Connection conn, Persona entity) throws SQLException {
-        int domicilioId;
-        if (entity.getDomicilio() != null && entity.getDomicilio().getId() == 0) {
-            this.domicilioDao.insertWithConnection(conn, entity.getDomicilio());
-            domicilioId = entity.getDomicilio().getId();
-        } else if (entity.getDomicilio() != null && entity.getDomicilio().getId() != 0) {
-            this.domicilioDao.updateWithConnection(conn, entity.getDomicilio());
-            domicilioId = entity.getDomicilio().getId();
+        if (entity.getDomicilio() == null) {
+            throw new IllegalArgumentException("Persona must have a Domicilio for update.");
+        } else if (entity.getDomicilio().getId() == 0) {
+            this.domicilioDao.insert(conn, entity.getDomicilio());
         } else {
-            throw new IllegalArgumentException("Persona debe tener un Domicilio para actualizarla.");
+            this.domicilioDao.updateWithConnection(conn, entity.getDomicilio());
         }
+        int domicilioId = entity.getDomicilio().getId();
         String sql = "UPDATE " + tableName + " SET nombre = ?, edad = ?, id_domicilio = ? WHERE " + idColumnName + " = ?";
         PreparedStatement ps = conn.prepareStatement(sql);
         ps.setString(1, entity.getNombre());
@@ -98,31 +99,26 @@ public class PersonaDAO extends BaseDAO<Persona, Integer> {
     }
     
     @Override
-    public List<Persona> findAll(){
-        Connection conn = null;
-        PreparedStatement ps = null;
-        ResultSet rs = null;
+    public List<Persona> findAll() throws SQLException {
         List<Persona> personas = new ArrayList<>();
-        String sql = "SELECT p.id, p.nombre, p.edad, " +
-                     "d.id AS domicilio_id, d.localidad, d.provincia " + 
-                     "FROM " + tableName + " p " + 
-                     "JOIN integradorprog2.domicilio d ON p.id_domicilio = d.id";
-
+        String sql = "SELECT p.id, p.nombre, p.edad, d.id AS domicilio_id, d.localidad, d.provincia " +
+                     "FROM persona p INNER JOIN domicilio d ON p.id_domicilio = d.id";
+        Connection conn = null;
+        PreparedStatement pstmt = null;
+        ResultSet rs = null;
         try {
             conn = DatabaseConnection.getConnection();
-            ps = conn.prepareStatement(sql);
-            rs = ps.executeQuery();
+            pstmt = conn.prepareStatement(sql);
+            rs = pstmt.executeQuery();
             while (rs.next()) {
                 personas.add(mapResultSetToObject(rs));
             }
-        } catch(SQLException e){
-            System.err.println("Error al listar todas las entidades de " + tableName + ": " + e.getMessage());
-            throw new RuntimeException("Error en la base de datos al listar entidades.", e);
+        } catch (SQLException e) {
+            System.err.println("Error al listar todas las entidades Persona: " + e.getMessage());
+            throw e;
         } finally {
-            closeResources(ps, rs, conn);
+            closeResources(pstmt, rs, conn);
         }
         return personas;
     }
-    
-    
 }

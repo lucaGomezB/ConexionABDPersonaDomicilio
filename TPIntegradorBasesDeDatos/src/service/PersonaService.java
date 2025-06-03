@@ -23,12 +23,13 @@ public class PersonaService extends BaseService<Persona,Integer> {
 
     @Override
     public List<Persona> findAll() {
-        try {
-            return personaDao.findAll();
-        } catch (RuntimeException e) { 
-            throw new RuntimeException("No se han podido conseguir todas las personas.", e);
-        }
+    try {
+        return personaDao.findAll();
+    } catch (SQLException e) {
+        System.err.println("Error en el servicio al intentar obtener todas las personas: " + e.getMessage());
+        throw new RuntimeException("No se han podido conseguir todas las personas.", e);
     }
+}
 
     @Override
     public void delete(Integer id) {
@@ -83,7 +84,8 @@ public class PersonaService extends BaseService<Persona,Integer> {
             conn.commit();
             return persona;
         } catch (SQLException e) {
-            System.err.println("Error de servicio creando persona: " + persona.getNombre());
+            System.err.println("Error de servicio creando persona: " + persona.getNombre() + e.getMessage() +"\n");
+            e.printStackTrace();
             if (conn != null) {
                 try {
                     conn.rollback();
@@ -103,4 +105,6 @@ public class PersonaService extends BaseService<Persona,Integer> {
             }
         }
     }
+    
+    
 }

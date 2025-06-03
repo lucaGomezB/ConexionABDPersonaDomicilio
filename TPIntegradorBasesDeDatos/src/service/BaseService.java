@@ -75,4 +75,13 @@ public abstract class BaseService<T, ID> implements GenericService<T, ID> {
     public List<T> findAll() {
         return dao.findAll();
     }
+    
+    public T findById(ID id) throws SQLException {
+        try {
+            return dao.findByID(id);
+        } catch (SQLException e) {
+            System.err.println("Service error finding entity by ID: " + id);
+            throw e;
+        }
+    }
 }

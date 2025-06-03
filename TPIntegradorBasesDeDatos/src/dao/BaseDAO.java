@@ -141,26 +141,27 @@ public abstract class BaseDAO<T, ID> implements GenericDAO<T, ID> {
         } finally { closeResources(null, null, conn); }
     }
 
-    @Override
-    public List<T> findAll(){
-        List<T> entities = new ArrayList<>();
-        String sql = "SELECT * FROM " + tableName;
-        PreparedStatement pstmt = null;
-        ResultSet rs = null;
-        try {
-            pstmt = connection.prepareStatement(sql);
-            rs = pstmt.executeQuery();
-            while (rs.next()) {
-                entities.add(mapResultSetToObject(rs));
-            }
-        } catch (SQLException e) {
-            System.err.println("Error al listar todas las entidades de " + tableName + ": " + e.getMessage());
-            throw new RuntimeException("Error en la base de datos al listar entidades.", e);
-        } finally {
-            closeResources(pstmt, rs, null);
+    public List<T> findAll() throws SQLException { 
+    List<T> entities = new ArrayList<>();
+    String sql = "SELECT * FROM " + tableName;
+    Connection conn = null;
+    PreparedStatement pstmt = null;
+    ResultSet rs = null;
+    try {
+        conn = DatabaseConnection.getConnection();
+        pstmt = conn.prepareStatement(sql);
+        rs = pstmt.executeQuery();
+        while (rs.next()) {
+            entities.add(mapResultSetToObject(rs));
         }
-        return entities;
+    } catch (SQLException e) {
+        System.err.println("Error al listar todas las entidades de " + tableName + ": " + e.getMessage());
+        throw e; 
+    } finally {
+        closeResources(pstmt, rs, conn);
     }
+    return entities;
+}
     
     public boolean existeNombre(String nombre) {
         String sql = "SELECT COUNT(*) FROM " + tableName + " WHERE nombre = ?"; // Acá casi permito inyecciones SQL sin querer xd, casi me olvido de usar prepared statements.
@@ -194,7 +195,7 @@ public abstract class BaseDAO<T, ID> implements GenericDAO<T, ID> {
         }
     }
     
-    public T findByID(Integer id) throws SQLException{
+    public T findByID(ID id) throws SQLException{
         Connection conn = null;
         PreparedStatement ps = null;
         ResultSet rs = null;
